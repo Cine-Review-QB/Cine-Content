@@ -1,6 +1,8 @@
 # Cine-Content
 
-Backend da plataforma **Cine-Content** construído com [Flask](https://flask.palletsprojects.com/). Fornece uma API REST para listagem de filmes e gerenciamento de avaliações.
+**Content Service** da plataforma CineReviews — microsserviço responsável pelo catálogo de filmes. Construído com [Flask](https://flask.palletsprojects.com/) e MongoDB Atlas.
+
+> Reviews, usuários e likes vivem em outros microsserviços (Review Service, Auth Service).
 
 ---
 
@@ -51,47 +53,42 @@ O servidor estará disponível em `http://localhost:5000`.
 
 ### Filmes
 
-| Método | Rota                          | Descrição                         |
-|--------|-------------------------------|-----------------------------------|
-| GET    | `/api/movies/`                | Lista todos os filmes             |
-| GET    | `/api/movies/?genre=<gênero>` | Filtra filmes por gênero          |
-| GET    | `/api/movies/<id>`            | Retorna um filme pelo ID          |
-| POST   | `/api/movies/`                | Adiciona um novo filme            |
+| Método | Rota                                          | Descrição                                          |
+|--------|-----------------------------------------------|----------------------------------------------------|
+| GET    | `/api/movies/`                                | Lista filmes paginados (default 20, max 100)       |
+| GET    | `/api/movies/?genre=<gênero>&limit=&skip=`    | Filtra por gênero e/ou pagina                      |
+| GET    | `/api/movies/<id>`                            | Retorna um filme pelo `_id` (ObjectId)             |
+| POST   | `/api/movies/`                                | Adiciona um novo filme                             |
 
 #### Body – POST `/api/movies/`
 
 ```json
 {
   "title": "Título do Filme",
-  "year": 2024,
   "original_title": "Movie Title",
-  "genre": ["Ação", "Drama"],
+  "year": 2024,
+  "genres": ["Ação", "Drama"],
   "director": "Nome do Diretor",
-  "synopsis": "Breve descrição do filme.",
-  "rating": 8.5
+  "overview": "Breve descrição do filme.",
+  "rating": 8.5,
+  "runtime": 120,
+  "poster_url": "https://...",
+  "cast": ["Ator 1", "Ator 2"],
+  "language": "pt",
+  "imdb_id": "tt1234567"
 }
 ```
 
 > Campos obrigatórios: `title`, `year`.
 
-### Avaliações
+---
 
-| Método | Rota                               | Descrição                              |
-|--------|------------------------------------|----------------------------------------|
-| GET    | `/api/movies/<id>/reviews`         | Lista as avaliações de um filme        |
-| POST   | `/api/movies/<id>/reviews`         | Adiciona uma avaliação a um filme      |
+## Popular o banco
 
-#### Body – POST `/api/movies/<id>/reviews`
-
-```json
-{
-  "author": "Nome do Usuário",
-  "rating": 9,
-  "comment": "Comentário sobre o filme."
-}
+```bash
+# Configure MONGO_URI no .env e KAGGLE_API_TOKEN
+uv run python scripts/seed_movies_from_kaggle.py
 ```
-
-> Campos obrigatórios: `author`, `rating` (1–10).
 
 ---
 
