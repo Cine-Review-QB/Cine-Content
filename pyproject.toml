@@ -7,5 +7,15 @@ requires-python = ">=3.10"
 dependencies = [
     "flask==3.1.0",
     "flask-cors==5.0.1",
+    "kaggle>=1.7.4",
+    "mongomock>=4.3.0",
+    "pandas==2.2.3",
+    "pymongo==4.10.1",
     "python-dotenv==1.0.1",
+    "tqdm==4.67.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
 ]
