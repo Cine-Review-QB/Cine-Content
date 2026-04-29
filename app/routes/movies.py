@@ -1,28 +1,50 @@
 from flask import Blueprint, jsonify, request
+
 from app.models.movie import (
-    get_all_movies,
-    get_movie_by_id,
     create_movie,
-    get_reviews_for_movie,
-    create_review,
+    get_movie_by_id,
+    list_movies,
 )
 
 movies_bp = Blueprint("movies", __name__, url_prefix="/api/movies")
 
+MAX_LIMIT = 100
+DEFAULT_LIMIT = 20
+
+
+def _parse_pagination():
+    try:
+        limit = int(request.args.get("limit", DEFAULT_LIMIT))
+        skip = int(request.args.get("skip", 0))
+    except ValueError:
+        return None, None, "Parâmetros 'limit' e 'skip' devem ser inteiros."
+    if limit < 1 or limit > MAX_LIMIT:
+        return None, None, f"'limit' deve estar entre 1 e {MAX_LIMIT}."
+    if skip < 0:
+        return None, None, "'skip' não pode ser negativo."
+    return limit, skip, None
+
 
 @movies_bp.get("/")
-def list_movies():
-    """Lista todos os filmes disponíveis."""
+def list_movies_route():
+    """Lista filmes paginados, opcionalmente filtrados por gênero."""
+    limit, skip, err = _parse_pagination()
+    if err:
+        return jsonify({"error": err}), 400
+
     genre = request.args.get("genre")
-    movies = get_all_movies()
-    if genre:
-        movies = [m for m in movies if genre in m.get("genre", [])]
-    return jsonify({"movies": movies, "total": len(movies)}), 200
+    movies, total = list_movies(genre=genre, limit=limit, skip=skip)
+    return jsonify({
+        "movies": movies,
+        "total": total,
+        "limit": limit,
+        "skip": skip,
+    }), 200
 
 
-@movies_bp.get("/<int:movie_id>")
+@movies_bp.get("/<movie_id>")
 def get_movie(movie_id):
-    """Retorna os detalhes de um filme pelo ID."""
+    """Retorna os detalhes de um filme pelo _id (ObjectId em string)."""
     movie = get_movie_by_id(movie_id)
     if movie is None:
         return jsonify({"error": "Filme não encontrado."}), 404
@@ -31,7 +53,7 @@ def get_movie(movie_id):
 
 @movies_bp.post("/")
 def add_movie():
-    """Adiciona um novo filme."""
+    """Adiciona um novo filme à collection."""
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Corpo da requisição inválido ou ausente."}), 400
@@ -46,41 +68,3 @@ def add_movie():
 
     movie = create_movie(data)
     return jsonify(movie), 201
-
-
-@movies_bp.get("/<int:movie_id>/reviews")
-def list_reviews(movie_id):
-    """Lista as avaliações de um filme."""
-    movie = get_movie_by_id(movie_id)
-    if movie is None:
-        return jsonify({"error": "Filme não encontrado."}), 404
-
-    reviews = get_reviews_for_movie(movie_id)
-    return jsonify({"reviews": reviews, "total": len(reviews)}), 200
-
-
-@movies_bp.post("/<int:movie_id>/reviews")
-def add_review(movie_id):
-    """Adiciona uma avaliação a um filme."""
-    movie = get_movie_by_id(movie_id)
-    if movie is None:
-        return jsonify({"error": "Filme não encontrado."}), 404
-
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "Corpo da requisição inválido ou ausente."}), 400
-
-    required_fields = ["author", "rating"]
-    missing = [f for f in required_fields if f not in data]
-    if missing:
-        return (
-            jsonify({"error": f"Campos obrigatórios ausentes: {', '.join(missing)}"}),
-            400,
-        )
-
-    rating = data["rating"]
-    if not isinstance(rating, (int, float)) or not (1 <= rating <= 10):
-        return jsonify({"error": "A nota deve ser um número entre 1 e 10."}), 400
-
-    review = create_review(movie_id, data)
-    return jsonify(review), 201
