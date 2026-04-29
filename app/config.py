@@ -3,6 +3,7 @@ import os
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
+    MONGO_URI = os.environ.get("MONGO_URI")
     DEBUG = False
     TESTING = False
 
