@@ -49,9 +49,11 @@ def create_movie(data: dict) -> dict:
         "rating": data.get("rating"),
         "runtime": data.get("runtime"),
         "poster_url": data.get("poster_url"),
+        "backdrop_url": data.get("backdrop_url"),
         "cast": data.get("cast", []),
         "language": data.get("language"),
         "imdb_id": data.get("imdb_id"),
+        "tmdb_id": data.get("tmdb_id"),
     }
     result = get_collection().insert_one(doc)
     doc["_id"] = result.inserted_id

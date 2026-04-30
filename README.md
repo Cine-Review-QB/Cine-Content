@@ -48,7 +48,7 @@ O Content Service é um dos serviços de domínio da plataforma CineReviews. Ele
 - Python **3.10+**
 - MongoDB Atlas (ou um Mongo local para desenvolvimento)
 - (Opcional) [`uv`](https://docs.astral.sh/uv/) para gerenciar dependências
-- (Opcional) Conta no Kaggle com `~/.kaggle/kaggle.json` para rodar o seed
+- API key do [TMDB](https://www.themoviedb.org/settings/api) para popular o banco
 
 ---
 
@@ -77,16 +77,18 @@ Crie um arquivo `.env` na raiz do projeto:
 
 ```bash
 MONGO_URI="mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/?retryWrites=true&w=majority"
+TMDB_API_KEY="<sua_chave_tmdb_v3>"
 FLASK_ENV=development
 PORT=5000
 ```
 
-| Variável     | Obrigatória              | Descrição                              |
-|--------------|--------------------------|----------------------------------------|
-| `MONGO_URI`  | sim                      | string de conexão MongoDB              |
-| `FLASK_ENV`  | não (default `development`) | `development` / `testing` / `production` |
-| `PORT`       | não (default `5000`)     | porta HTTP                             |
-| `SECRET_KEY` | não                      | chave de sessão Flask                  |
+| Variável        | Obrigatória              | Descrição                                                                  |
+|-----------------|--------------------------|----------------------------------------------------------------------------|
+| `MONGO_URI`     | sim                      | string de conexão MongoDB                                                  |
+| `TMDB_API_KEY`  | só para o seed           | chave v3 da TMDB (https://www.themoviedb.org/settings/api)                |
+| `FLASK_ENV`     | não (default `development`) | `development` / `testing` / `production`                                |
+| `PORT`          | não (default `5000`)     | porta HTTP                                                                 |
+| `SECRET_KEY`    | não                      | chave de sessão Flask                                                      |
 
 ---
 
@@ -189,6 +191,8 @@ Collection: **`cinedb.content`** (não `movies`).
 ```jsonc
 {
   "_id": "ObjectId — gerado pelo Mongo",
+  "tmdb_id": 862,
+  "imdb_id": "tt0111161",
   "title": "string",
   "original_title": "string | null",
   "year": 1999,
@@ -197,10 +201,10 @@ Collection: **`cinedb.content`** (não `movies`).
   "overview": "string | null",
   "rating": 9.3,
   "runtime": 142,
-  "poster_url": "https://image.tmdb.org/...",
+  "poster_url": "https://image.tmdb.org/t/p/w500/...",
+  "backdrop_url": "https://image.tmdb.org/t/p/original/...",
   "cast": ["Tim Robbins", "Morgan Freeman"],
-  "language": "en",
-  "imdb_id": "tt0111161"
+  "language": "en"
 }
 ```
 
@@ -208,7 +212,8 @@ Collection: **`cinedb.content`** (não `movies`).
 
 | Campo              | Tipo     | Finalidade                                  |
 |--------------------|----------|---------------------------------------------|
-| `imdb_id`          | UNIQUE   | evitar duplicatas na ingestão               |
+| `tmdb_id`          | UNIQUE   | chave canônica do TMDB; idempotência do seed|
+| `imdb_id`          | UNIQUE   | lookup cruzado por IMDb                     |
 | `title`            | TEXT     | busca full-text por nome do filme           |
 | `genres`           | ASC      | filtro por gênero                           |
 | `rating`           | ASC      | ordenação dos mais bem avaliados            |
@@ -218,24 +223,27 @@ Collection: **`cinedb.content`** (não `movies`).
 
 ## Populando o banco
 
-O seed usa o dataset público [`rounakbanik/the-movies-dataset`](https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset) do Kaggle.
+O seed busca filmes diretamente da [TMDB API](https://developer.themoviedb.org/) via `/discover/movie` ordenado por popularidade descendente. Para cada filme, faz uma segunda chamada em `/movie/{id}?append_to_response=credits` para obter elenco e diretor.
 
 **Pré-requisitos:**
 1. `MONGO_URI` no `.env`.
-2. Credenciais Kaggle em `~/.kaggle/kaggle.json` (`chmod 600`).
+2. `TMDB_API_KEY` no `.env` (chave v3, gratuita em https://www.themoviedb.org/settings/api).
 
 ```bash
-# Download + ingestão completa
-uv run python scripts/seed_movies_from_kaggle.py
+# Default: 100 páginas (~2000 filmes mais populares)
+uv run python scripts/seed_movies_from_tmdb.py
 
-# Apenas as primeiras N linhas (debug)
-uv run python scripts/seed_movies_from_kaggle.py --limit 1000
+# Smoke test rápido (~100 filmes)
+uv run python scripts/seed_movies_from_tmdb.py --pages 5
 
-# Pular o download (CSVs já estão em data/)
-uv run python scripts/seed_movies_from_kaggle.py --skip-download
+# Mais filmes (TMDB limita /discover a 500 páginas = ~10k filmes)
+uv run python scripts/seed_movies_from_tmdb.py --pages 250
+
+# Mais agressivo na concorrência
+uv run python scripts/seed_movies_from_tmdb.py --concurrency 50
 ```
 
-O script é **idempotente** (usa `UpdateOne` com `upsert=True` em `imdb_id`), pode ser executado múltiplas vezes sem duplicar registros.
+O script é **idempotente** (usa `UpdateOne` com `upsert=True` em `tmdb_id`), pode ser executado múltiplas vezes sem duplicar registros — chamadas subsequentes só atualizam dados que mudaram (ex.: pôsteres trocados pelo TMDB).
 
 ---
 
@@ -267,8 +275,7 @@ Cine-Content/
 │       ├── health.py            # GET /health
 │       └── movies.py            # /api/movies/*
 ├── scripts/
-│   └── seed_movies_from_kaggle.py
-├── data/                        # CSVs (gitignored)
+│   └── seed_movies_from_tmdb.py
 ├── tests/
 │   ├── conftest.py
 │   └── test_api.py
