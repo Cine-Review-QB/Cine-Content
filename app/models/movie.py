@@ -27,6 +27,21 @@ def list_movies(genre: str | None = None, limit: int = 20, skip: int = 0) -> tup
     return docs, total
 
 
+def search_movies(query: str, limit: int = 20, skip: int = 0) -> tuple[list[dict], int]:
+    """Busca full-text por título via índice TEXT. Retorna (docs, total)."""
+    coll = get_collection()
+    q = {"$text": {"$search": query}}
+    cursor = coll.find(q).skip(skip).limit(limit)
+    docs = [_serialize(d) for d in cursor]
+    total = coll.count_documents(q)
+    return docs, total
+
+
+def list_genres() -> list[str]:
+    """Retorna a lista distinta de gêneros, ordenada alfabeticamente."""
+    return sorted(g for g in get_collection().distinct("genres") if g)
+
+
 def get_movie_by_id(movie_id: str) -> dict | None:
     """Busca por _id (string ObjectId). Retorna None se id inválido ou inexistente."""
     try:

@@ -15,7 +15,7 @@ def test_health_check(client):
 
 
 def test_list_movies_empty(client):
-    response = client.get("/api/movies/")
+    response = client.get("/movies")
     assert response.status_code == 200
     data = response.get_json()
     assert data["movies"] == []
@@ -27,7 +27,7 @@ def test_list_movies_paginated(client):
         {"title": f"Filme {i}", "year": 2000 + i, "genres": ["Drama"]}
         for i in range(5)
     ])
-    response = client.get("/api/movies/?limit=2&skip=1")
+    response = client.get("/movies?limit=2&skip=1")
     data = response.get_json()
     assert response.status_code == 200
     assert len(data["movies"]) == 2
@@ -36,21 +36,34 @@ def test_list_movies_paginated(client):
     assert data["skip"] == 1
 
 
-def test_list_movies_filter_by_genre(client):
+def test_list_movies_filter_by_genre_query(client):
     _seed([
         {"title": "A", "year": 1999, "genres": ["Drama"]},
         {"title": "B", "year": 2000, "genres": ["Comedy"]},
         {"title": "C", "year": 2001, "genres": ["Drama", "Romance"]},
     ])
-    response = client.get("/api/movies/?genre=Drama")
+    response = client.get("/movies?genre=Drama")
     data = response.get_json()
     assert data["total"] == 2
     assert {m["title"] for m in data["movies"]} == {"A", "C"}
 
 
+def test_list_movies_filter_by_genre_path(client):
+    _seed([
+        {"title": "A", "year": 1999, "genres": ["Drama"]},
+        {"title": "B", "year": 2000, "genres": ["Comedy"]},
+    ])
+    response = client.get("/movies/genre/Drama")
+    data = response.get_json()
+    assert response.status_code == 200
+    assert data["genre"] == "Drama"
+    assert data["total"] == 1
+    assert data["movies"][0]["title"] == "A"
+
+
 def test_get_movie_by_id(client):
     ids = _seed([{"title": "Matrix", "year": 1999, "genres": ["Sci-Fi"]}])
-    response = client.get(f"/api/movies/{ids[0]}")
+    response = client.get(f"/movies/{ids[0]}")
     assert response.status_code == 200
     data = response.get_json()
     assert data["title"] == "Matrix"
@@ -58,19 +71,19 @@ def test_get_movie_by_id(client):
 
 
 def test_get_movie_invalid_id(client):
-    response = client.get("/api/movies/not-an-objectid")
+    response = client.get("/movies/not-an-objectid")
     assert response.status_code == 404
 
 
 def test_get_movie_not_found(client):
     fake_id = ObjectId()
-    response = client.get(f"/api/movies/{fake_id}")
+    response = client.get(f"/movies/{fake_id}")
     assert response.status_code == 404
 
 
 def test_add_movie(client):
     payload = {"title": "Matrix", "year": 1999, "director": "Wachowski"}
-    response = client.post("/api/movies/", json=payload)
+    response = client.post("/movies", json=payload)
     assert response.status_code == 201
     data = response.get_json()
     assert data["title"] == "Matrix"
@@ -79,11 +92,35 @@ def test_add_movie(client):
 
 
 def test_add_movie_missing_fields(client):
-    response = client.post("/api/movies/", json={"title": "Sem Ano"})
+    response = client.post("/movies", json={"title": "Sem Ano"})
     assert response.status_code == 400
     assert "error" in response.get_json()
 
 
 def test_invalid_pagination(client):
-    response = client.get("/api/movies/?limit=999")
+    response = client.get("/movies?limit=999")
     assert response.status_code == 400
+
+
+def test_search_missing_query(client):
+    response = client.get("/movies/search")
+    assert response.status_code == 400
+
+
+def test_genres_endpoint(client):
+    _seed([
+        {"title": "A", "year": 1999, "genres": ["Drama", "Romance"]},
+        {"title": "B", "year": 2000, "genres": ["Drama"]},
+        {"title": "C", "year": 2001, "genres": ["Comedy"]},
+    ])
+    response = client.get("/genres")
+    assert response.status_code == 200
+    assert response.get_json()["genres"] == ["Comedy", "Drama", "Romance"]
+
+
+def test_trailing_slash_alias(client):
+    """Tanto /movies quanto /movies/ devem funcionar (strict_slashes=False)."""
+    response_no_slash = client.get("/movies")
+    response_with_slash = client.get("/movies/")
+    assert response_no_slash.status_code == 200
+    assert response_with_slash.status_code == 200

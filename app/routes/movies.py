@@ -4,9 +4,10 @@ from app.models.movie import (
     create_movie,
     get_movie_by_id,
     list_movies,
+    search_movies,
 )
 
-movies_bp = Blueprint("movies", __name__, url_prefix="/api/movies")
+movies_bp = Blueprint("movies", __name__, url_prefix="/movies")
 
 MAX_LIMIT = 100
 DEFAULT_LIMIT = 20
@@ -25,6 +26,7 @@ def _parse_pagination():
     return limit, skip, None
 
 
+@movies_bp.get("")
 @movies_bp.get("/")
 def list_movies_route():
     """Lista filmes paginados, opcionalmente filtrados por gênero."""
@@ -42,6 +44,44 @@ def list_movies_route():
     }), 200
 
 
+@movies_bp.get("/search")
+def search_movies_route():
+    """Busca full-text por título (rota fixa, antes de /<movie_id>)."""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"error": "Parâmetro 'q' é obrigatório."}), 400
+
+    limit, skip, err = _parse_pagination()
+    if err:
+        return jsonify({"error": err}), 400
+
+    movies, total = search_movies(q, limit=limit, skip=skip)
+    return jsonify({
+        "movies": movies,
+        "total": total,
+        "query": q,
+        "limit": limit,
+        "skip": skip,
+    }), 200
+
+
+@movies_bp.get("/genre/<genre>")
+def list_by_genre_route(genre):
+    """Filtra filmes por gênero (URL path) — alias amigável de ?genre=."""
+    limit, skip, err = _parse_pagination()
+    if err:
+        return jsonify({"error": err}), 400
+
+    movies, total = list_movies(genre=genre, limit=limit, skip=skip)
+    return jsonify({
+        "movies": movies,
+        "total": total,
+        "genre": genre,
+        "limit": limit,
+        "skip": skip,
+    }), 200
+
+
 @movies_bp.get("/<movie_id>")
 def get_movie(movie_id):
     """Retorna os detalhes de um filme pelo _id (ObjectId em string)."""
@@ -51,6 +91,7 @@ def get_movie(movie_id):
     return jsonify(movie), 200
 
 
+@movies_bp.post("")
 @movies_bp.post("/")
 def add_movie():
     """Adiciona um novo filme à collection."""
