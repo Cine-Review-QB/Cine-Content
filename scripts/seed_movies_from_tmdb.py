@@ -154,6 +154,7 @@ def build_doc(m: dict) -> dict | None:
         "year": _parse_year(m.get("release_date")),
         "genres": genres,
         "rating": float(m.get("vote_average") or 0.0),
+        "vote_count": int(m.get("vote_count") or 0),
         "runtime": int(m["runtime"]) if m.get("runtime") else None,
         "overview": (m.get("overview") or "").strip() or None,
         "poster_url": f"{POSTER_BASE}{poster_path}" if poster_path else None,

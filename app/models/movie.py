@@ -62,6 +62,7 @@ def create_movie(data: dict) -> dict:
         "director": data.get("director"),
         "overview": data.get("overview"),
         "rating": data.get("rating"),
+        "vote_count": data.get("vote_count"),
         "runtime": data.get("runtime"),
         "poster_url": data.get("poster_url"),
         "backdrop_url": data.get("backdrop_url"),
