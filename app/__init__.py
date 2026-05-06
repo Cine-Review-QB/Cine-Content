@@ -2,6 +2,7 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from app.config import config
+from app.cache import init_redis
 from app.db import init_from_uri
 from app.routes.movies import movies_bp
 from app.routes.health import health_bp
@@ -26,6 +27,7 @@ def create_app(config_name=None):
         if not mongo_uri:
             raise RuntimeError("MONGO_URI ausente nas configurações.")
         init_from_uri(mongo_uri)
+        init_redis(app.config)
 
     CORS(app)
 

@@ -4,7 +4,9 @@ from app.models.movie import (
     create_movie,
     get_movie_by_id,
     list_movies,
+    list_popular_movies,
     search_movies,
+    update_movie,
 )
 
 movies_bp = Blueprint("movies", __name__, url_prefix="/movies")
@@ -65,6 +67,24 @@ def search_movies_route():
     }), 200
 
 
+@movies_bp.get("/popular")
+def list_popular_movies_route():
+    """Lista os filmes mais populares pela nota armazenada."""
+    try:
+        limit = int(request.args.get("limit", DEFAULT_LIMIT))
+    except ValueError:
+        return jsonify({"error": "Parâmetro 'limit' deve ser inteiro."}), 400
+    if limit < 1 or limit > MAX_LIMIT:
+        return jsonify({"error": f"'limit' deve estar entre 1 e {MAX_LIMIT}."}), 400
+
+    movies, total = list_popular_movies(limit=limit)
+    return jsonify({
+        "movies": movies,
+        "total": total,
+        "limit": limit,
+    }), 200
+
+
 @movies_bp.get("/genre/<genre>")
 def list_by_genre_route(genre):
     """Filtra filmes por gênero (URL path) — alias amigável de ?genre=."""
@@ -109,3 +129,16 @@ def add_movie():
 
     movie = create_movie(data)
     return jsonify(movie), 201
+
+
+@movies_bp.put("/<movie_id>")
+def edit_movie(movie_id):
+    """Atualiza campos de um filme existente."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Corpo da requisição inválido ou ausente."}), 400
+
+    movie = update_movie(movie_id, data)
+    if movie is None:
+        return jsonify({"error": "Filme não encontrado."}), 404
+    return jsonify(movie), 200
