@@ -7,10 +7,28 @@ from app.db import get_collection
 
 
 def _serialize(doc: dict) -> dict:
-    """Converte _id (ObjectId) em string para serialização JSON."""
+    """Converte _id (ObjectId) em string e combina rating/vote_count
+    com reviews locais quando existem.
+
+    Local rating é em escala 0.5–5; TMDB é 0–10. Convertemos local
+    multiplicando por 2 antes da média ponderada — assim 1 review
+    nossa vale o mesmo que 1 voto no TMDB.
+    """
     if doc is None:
         return None
     doc["_id"] = str(doc["_id"])
+
+    local_n = int(doc.get("local_review_count") or 0)
+    if local_n > 0:
+        tmdb_r = float(doc.get("rating") or 0.0)
+        tmdb_v = int(doc.get("vote_count") or 0)
+        local_avg = float(doc.get("local_avg_rating") or 0.0)
+        local_on_10 = local_avg * 2
+        denom = tmdb_v + local_n
+        if denom > 0:
+            combined = (tmdb_r * tmdb_v + local_on_10 * local_n) / denom
+            doc["rating"] = round(combined, 2)
+            doc["vote_count"] = denom
     return doc
 
 
@@ -50,6 +68,29 @@ def get_movie_by_id(movie_id: str) -> dict | None:
         return None
     doc = get_collection().find_one({"_id": oid})
     return _serialize(doc) if doc else None
+
+
+def update_aggregate(movie_id: str, count: int, avg: float) -> bool:
+    """Atualiza local_review_count e local_avg_rating do filme.
+
+    Chamado pelo Cine-Review via PUT /movies/{id}/aggregate quando uma
+    review é criada ou deletada. Retorna False se ID inválido ou filme
+    não encontrado.
+    """
+    try:
+        oid = ObjectId(movie_id)
+    except (InvalidId, TypeError):
+        return False
+    result = get_collection().update_one(
+        {"_id": oid},
+        {
+            "$set": {
+                "local_review_count": int(count),
+                "local_avg_rating": float(avg),
+            }
+        },
+    )
+    return result.matched_count > 0
 
 
 def create_movie(data: dict) -> dict:

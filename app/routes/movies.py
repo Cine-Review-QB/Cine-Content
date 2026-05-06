@@ -5,6 +5,7 @@ from app.models.movie import (
     get_movie_by_id,
     list_movies,
     search_movies,
+    update_aggregate,
 )
 
 movies_bp = Blueprint("movies", __name__, url_prefix="/movies")
@@ -89,6 +90,26 @@ def get_movie(movie_id):
     if movie is None:
         return jsonify({"error": "Filme não encontrado."}), 404
     return jsonify(movie), 200
+
+
+@movies_bp.put("/<movie_id>/aggregate")
+def update_movie_aggregate(movie_id):
+    """Atualiza o agregado local (count + avg) — chamado pelo Cine-Review
+    quando reviews mudam. Não exposto publicamente via Gateway."""
+    data = request.get_json(silent=True) or {}
+    if "count" not in data or "avg" not in data:
+        return jsonify({"error": "Campos 'count' e 'avg' obrigatórios."}), 400
+    try:
+        count = int(data["count"])
+        avg = float(data["avg"])
+    except (ValueError, TypeError):
+        return jsonify({"error": "'count' e 'avg' devem ser numéricos."}), 400
+    if count < 0:
+        return jsonify({"error": "'count' não pode ser negativo."}), 400
+
+    if not update_aggregate(movie_id, count, avg):
+        return jsonify({"error": "Filme não encontrado."}), 404
+    return jsonify({"ok": True}), 200
 
 
 @movies_bp.post("")
