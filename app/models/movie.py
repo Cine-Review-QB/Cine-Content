@@ -1,5 +1,8 @@
 """Acesso à collection `movies` do MongoDB (Content Service)."""
 
+import re
+import unicodedata
+
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -45,11 +48,45 @@ def list_movies(genre: str | None = None, limit: int = 20, skip: int = 0) -> tup
     return docs, total
 
 
+def _accent_fuzzy_regex(term: str) -> str:
+    term = unicodedata.normalize("NFKD", term)
+    term = "".join(ch for ch in term if not unicodedata.combining(ch))
+    chars = {
+        "a": "[aáàâãäå]",
+        "e": "[eéèêë]",
+        "i": "[iíìîï]",
+        "o": "[oóòôõö]",
+        "u": "[uúùûü]",
+        "c": "[cç]",
+        "n": "[nñ]",
+    }
+    return "".join(chars.get(ch.lower(), re.escape(ch)) for ch in term)
+
+
 def search_movies(query: str, limit: int = 20, skip: int = 0) -> tuple[list[dict], int]:
-    """Busca full-text por título via índice TEXT. Retorna (docs, total)."""
+    """Busca parcial e tolerante a acentos por titulo. Retorna (docs, total)."""
     coll = get_collection()
-    q = {"$text": {"$search": query}}
-    cursor = coll.find(q).skip(skip).limit(limit)
+    terms = [t for t in re.split(r"\s+", query.strip()) if t]
+    if not terms:
+        return [], 0
+
+    clauses = []
+    for term in terms:
+        regex = _accent_fuzzy_regex(term)
+        clauses.append({
+            "$or": [
+                {"title": {"$regex": regex, "$options": "i"}},
+                {"original_title": {"$regex": regex, "$options": "i"}},
+            ]
+        })
+
+    q = {"$and": clauses}
+    cursor = (
+        coll.find(q)
+        .sort([("vote_count", -1), ("rating", -1), ("year", -1)])
+        .skip(skip)
+        .limit(limit)
+    )
     docs = [_serialize(d) for d in cursor]
     total = coll.count_documents(q)
     return docs, total
