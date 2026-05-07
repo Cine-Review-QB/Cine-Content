@@ -102,8 +102,61 @@ def test_invalid_pagination(client):
     assert response.status_code == 400
 
 
+def test_invalid_skip_pagination(client):
+    response = client.get("/movies?skip=-1")
+    assert response.status_code == 400
+
+
+def test_non_integer_pagination(client):
+    response = client.get("/movies?limit=abc")
+    assert response.status_code == 400
+
+
 def test_search_missing_query(client):
     response = client.get("/movies/search")
+    assert response.status_code == 400
+
+
+def test_search_partial_title_is_accent_tolerant(client):
+    _seed([
+        {
+            "title": "Pokémon Detective Pikachu",
+            "original_title": "Pokémon Detective Pikachu",
+            "year": 2019,
+            "vote_count": 100,
+            "rating": 7.0,
+        },
+        {
+            "title": "Poker Face",
+            "original_title": "Poker Face",
+            "year": 2022,
+            "vote_count": 10,
+            "rating": 5.0,
+        },
+    ])
+
+    response = client.get("/movies/search?q=poke")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["query"] == "poke"
+    assert data["total"] == 2
+    assert data["movies"][0]["title"] == "Pokémon Detective Pikachu"
+
+
+def test_search_with_accented_query_matches_unaccented_regex(client):
+    _seed([
+        {"title": "Pokemon Heroes", "year": 2002},
+    ])
+
+    response = client.get("/movies/search?q=pokémon")
+
+    assert response.status_code == 200
+    assert response.get_json()["movies"][0]["title"] == "Pokemon Heroes"
+
+
+def test_search_invalid_pagination(client):
+    response = client.get("/movies/search?q=matrix&limit=0")
     assert response.status_code == 400
 
 
@@ -124,3 +177,78 @@ def test_trailing_slash_alias(client):
     response_with_slash = client.get("/movies/")
     assert response_no_slash.status_code == 200
     assert response_with_slash.status_code == 200
+
+
+def test_update_movie_aggregate(client):
+    ids = _seed([{"title": "Matrix", "year": 1999, "genres": ["Sci-Fi"]}])
+
+    response = client.put(
+        f"/movies/{ids[0]}/aggregate",
+        json={"count": 2, "avg": 4.5},
+    )
+    movie = client.get(f"/movies/{ids[0]}").get_json()
+
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True}
+    assert movie["local_review_count"] == 2
+    assert movie["local_avg_rating"] == 4.5
+
+
+def test_update_movie_aggregate_missing_fields(client):
+    ids = _seed([{"title": "Matrix", "year": 1999}])
+    response = client.put(f"/movies/{ids[0]}/aggregate", json={"count": 1})
+    assert response.status_code == 400
+
+
+def test_update_movie_aggregate_invalid_numbers(client):
+    ids = _seed([{"title": "Matrix", "year": 1999}])
+    response = client.put(
+        f"/movies/{ids[0]}/aggregate",
+        json={"count": "x", "avg": 4.5},
+    )
+    assert response.status_code == 400
+
+
+def test_update_movie_aggregate_negative_count(client):
+    ids = _seed([{"title": "Matrix", "year": 1999}])
+    response = client.put(
+        f"/movies/{ids[0]}/aggregate",
+        json={"count": -1, "avg": 4.5},
+    )
+    assert response.status_code == 400
+
+
+def test_update_movie_aggregate_invalid_id(client):
+    response = client.put(
+        "/movies/not-an-id/aggregate",
+        json={"count": 1, "avg": 4.0},
+    )
+    assert response.status_code == 404
+
+
+def test_update_movie_aggregate_not_found(client):
+    response = client.put(
+        f"/movies/{ObjectId()}/aggregate",
+        json={"count": 1, "avg": 4.0},
+    )
+    assert response.status_code == 404
+
+
+def test_local_rating_is_combined_with_tmdb_rating(client):
+    ids = _seed([
+        {
+            "title": "Matrix",
+            "year": 1999,
+            "rating": 8.0,
+            "vote_count": 2,
+            "local_avg_rating": 5.0,
+            "local_review_count": 1,
+        }
+    ])
+
+    response = client.get(f"/movies/{ids[0]}")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["rating"] == 8.67
+    assert data["vote_count"] == 3
